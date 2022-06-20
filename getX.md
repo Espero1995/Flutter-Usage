@@ -242,6 +242,248 @@ Get.toNamed('/my');
 
 ## 【三】状态管理 🚀✨
 
+get有两个不同的状态管理器： <font color=red>响应式状态管理器（GetX）</font>和<font color=red>简单状态管理器（GetBuilder）</font>。
+
+#### 1.响应式状态管理器 - 局部自动控制【自动挡 - GetX】
+
+使用 Get 的响应式编程就像使用 setState 一样简单。让我们想象一下，你有一个名称变量，并且希望每次你改变它时，所有使用它的小组件都会自动刷新。
+
+```dart
+var name = 'Jonatas Borges';
+```
+
+要想让它变得可观察，你只需要在它的末尾加上".obs"。
+
+```dart
+var name = 'Jonatas Borges'.obs;
+```
+
+在视图中，你只需要把这个变量放在`Obx()`这个Widget里面就可以了。`Obx`是相当聪明的，只有当`controller.name`的值发生变化时才会改变。
+
+```dart
+Obx (() => Text (controller.name));
+```
+
+当你需要对更新的内容进行**精细的控制时，**GetX()** 可以帮助你。
+
+如果你不需要 "unique IDs"，比如当你执行一个操作时，你的所有变量都会被修改，那么就使用`GetBuilder`。 因为它是一个简单的状态更新器(以块为单位，比如`setState()`)，只用几行代码就能完成。 它做得很简单，对CPU的影响最小，只是为了完成一个单一的目的（一个_State_ Rebuild），并尽可能地花费最少的资源。
+
+✨✨✨声明一个响应式变量：你有3种方法可以把一个变量变成是 "可观察的"。
+
+1 - 第一种是使用 **`Rx{Type}`**。
+
+```dart
+// 建议使用初始值，但不是强制性的
+final name = RxString('');
+final isLogged = RxBool(false);
+final count = RxInt(0);
+final balance = RxDouble(0.0);
+final items = RxList<String>([]);
+final myMap = RxMap<String, int>({});
+```
+
+2 - 第二种是使用 **`Rx`**，规定泛型 `Rx<Type>`。
+
+```dart
+final name = Rx<String>('');
+final isLogged = Rx<Bool>(false);
+final count = Rx<Int>(0);
+final balance = Rx<Double>(0.0);
+final number = Rx<Num>(0)
+final items = Rx<List<String>>([]);
+final myMap = Rx<Map<String, int>>({});
+// 自定义类 - 可以是任何类
+final user = Rx<User>();
+```
+
+3 - 第三种更实用、更简单、更可取的方法，只需添加 **`.obs`** 作为`value`的属性。
+
+```dart
+final name = ''.obs;
+final isLogged = false.obs;
+final count = 0.obs;
+final balance = 0.0.obs;
+final number = 0.obs;
+final items = <String>[].obs;
+final myMap = <String, int>{}.obs;
+// 自定义类 - 可以是任何类
+final user = User().obs;
+```
+
+案例：
+
+controller类中：
+
+```dart
+class CountController extends GetxController {
+  final _count1 = 0.obs;
+  set count1(value) => _count1.value = value;
+  get count1 => _count1.value;
+  final _count2 = 0.obs;
+  set count2(value) => _count2.value = value;
+	get count2 => _count2.value;
+	//求和
+  int get sum => _count1.value + count2.value;
+}
+
+```
+
+展示页中：
+
+```dart
+class StateGetxView extends StatelessWidget {
+  StateGetxView({Key? key}) : super(key: key);
+  final controller = CountController();
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          children: <Widget>[
+            GetX<CountController>(
+              init: controller,
+              initState: (_) {
+                print("初始化：$_");
+              },
+              builder: (_) {
+                print("GetX - 1");
+                return Text("value 1【count1】 -> ${_.count1}");
+              },
+            ),
+            GetX<CountController>(
+              init: CountController(),
+              initState: (_) {},
+              builder: (_) {
+                print("GetX - 2");
+                return Text('value 2【count2】 -> ${_.count2}');
+              },
+            ),
+            GetX<CountController>(
+              init: controller,
+              initState: (_) {},
+              builder: (_) {
+                print("GetX - 3");
+                return Column(
+                  children: [
+                    Text('value 3【sum】 -> ${_.sum}'),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+```
+
+如果我们把`count1.value++`递增，就会打印出来：
+
+- `GetX - 1`
+- `GetX - 3`
+
+如果我们改变`count2.value++`，就会打印出来。
+
+- `GetX - 2`
+- `GetX - 3`
+
+因为`count2.value`改变了，`sum`的结果现在是`2`。
+
+GetxController中有自己的一套生命周期【workers】，如下
+
+```dart
+	class CountController extends GetxController {
+  final _count = 0.obs;
+  set count(value) => _count.value++;
+  get count => _count.value;
+  @override
+  void onInit() {
+    super.onInit();
+		// 初始化
+    // 每次 可以拿来当购物车使用
+    ever(_count, (value) {
+      print("every -> " + value.toString());
+    });
+
+    // 第一次 用户登录信息 null
+    once(_count, (value) {
+      print("once -> " + value.toString());
+    });
+
+    // 防抖 2s 内
+    debounce(
+      _count,
+      (value) {
+        print("debounce -> " + value.toString());
+      },
+      time: const Duration(seconds: 2),
+    );
+
+    // 定时器 1s
+    interval(
+      _count,
+      (value) {
+        print("interval -> " + value.toString());
+      },
+      time: const Duration(seconds: 1),
+    );
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+  }
+
+  @override
+  void onClose() {
+    super.onClose();
+  }
+    
+   @override
+  void dispose() {
+    super.dispose();
+     // controller销毁的地方
+  }
+}
+```
+
+
+
+#### 2.简单状态管理器 - 局部手动控制【手动挡 - GetBuilder】
+
+Get有一个极其轻巧简单的状态管理器，它不使用ChangeNotifier，可以满足特别是对Flutter新手的需求，而且不会给大型应用带来问题。
+
+GetBuilder正是针对多状态控制的。想象一下，你在购物车中添加了30个产品，你点击删除一个，同时List更新了，价格更新了，购物车中的徽章也更新为更小的数字。这种类型的方法使GetBuilder成为杀手锏，因为它将状态分组并一次性改变，而无需为此进行任何 "计算逻辑"。GetBuilder就是考虑到这种情况而创建的，因为对于短暂的状态变化，你可以使用setState，而不需要状态管理器。
+
+这样一来，如果你想要一个单独的控制器，你可以为其分配ID，或者使用GetX。这取决于你，记住你有越多的 "单独 "部件，GetX的性能就越突出，而当有多个状态变化时，GetBuilder的性能应该更优越。
+
+用法：
+
+```dart
+// 创建控制器类并扩展GetxController。
+class Controller extends GetxController {
+  int counter = 0;
+  void increment() {
+    counter++;
+    update(); // 当调用增量时，使用update()来更新用户界面上的计数器变量。
+  }
+}
+// 在你的Stateless/Stateful类中，当调用increment时，使用GetBuilder来更新Text。
+GetBuilder<Controller>(
+  init: Controller(), // 首次启动
+  builder: (_) => Text(
+    '${_.counter}',
+  ),
+)
+//只在第一次时初始化你的控制器。第二次使用ReBuilder时，不要再使用同一控制器。一旦将控制器标记为 "init "的部件部署完毕，你的控制器将自动从内存中移除。你不必担心这个问题，Get会自动做到这一点，只是要确保你不要两次启动同一个控制器。
+```
+
+
+
+
+
 
 
 
@@ -264,9 +506,13 @@ https://github.com/jonataslaw/getx/blob/master/documentation/zh_CN/state_managem
 
 https://github.com/jonataslaw/getx/blob/master/documentation/zh_CN/dependency_management.md
 
-####【5】利用get_cli进行创建带getX的项目
+#### 【5】利用get_cli进行创建带getX的项目
 
 https://github.com/jonataslaw/get_cli/blob/master/README-zh_CN.md
+
+
+
+
 
 
 
