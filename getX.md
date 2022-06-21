@@ -264,7 +264,7 @@ var name = 'Jonatas Borges'.obs;
 Obx (() => Text (controller.name));
 ```
 
-当你需要对更新的内容进行**精细的控制时，**GetX()** 可以帮助你。
+当你需要对更新的内容进行**精细的控制时，**GetX() 可以帮助你。
 
 如果你不需要 "unique IDs"，比如当你执行一个操作时，你的所有变量都会被修改，那么就使用`GetBuilder`。 因为它是一个简单的状态更新器(以块为单位，比如`setState()`)，只用几行代码就能完成。 它做得很简单，对CPU的影响最小，只是为了完成一个单一的目的（一个_State_ Rebuild），并尽可能地花费最少的资源。
 
@@ -391,7 +391,118 @@ class StateGetxView extends StatelessWidget {
 
 因为`count2.value`改变了，`sum`的结果现在是`2`。
 
-GetxController中有自己的一套生命周期【workers】，如下
+
+
+#### 2.简单状态管理器 - 局部手动控制【手动挡 - GetBuilder】
+
+Get有一个极其轻巧简单的状态管理器，它不使用ChangeNotifier，可以满足特别是对Flutter新手的需求，而且不会给大型应用带来问题。
+
+GetBuilder正是针对多状态控制的。想象一下，你在购物车中添加了30个产品，你点击删除一个，同时List更新了，价格更新了，购物车中的徽章也更新为更小的数字。这种类型的方法使GetBuilder成为杀手锏，因为它将状态分组并一次性改变，而无需为此进行任何 "计算逻辑"。GetBuilder就是考虑到这种情况而创建的，因为对于短暂的状态变化，你可以使用setState，而不需要状态管理器。
+
+这样一来，如果你想要一个单独的控制器，你可以为其分配ID，或者使用GetX。这取决于你，记住你有越多的 "单独 "部件，GetX的性能就越突出，而当有多个状态变化时，GetBuilder的性能应该更优越。
+
+用法：
+
+```dart
+// 创建控制器类并扩展GetxController。
+class Controller extends GetxController {
+  int counter = 0;
+  void increment() {
+    counter++;
+    update(); // 当调用增量时，使用update()来更新用户界面上的计数器变量。
+  }
+}
+// 在你的Stateless/Stateful类中，当调用increment时，使用GetBuilder来更新Text。
+GetBuilder<Controller>(
+  init: Controller(), // 首次启动
+  builder: (_) => Text(
+    '${_.counter}',
+  ),
+)
+//只在第一次时初始化你的控制器。第二次使用ReBuilder时，不要再使用同一控制器。一旦将控制器标记为 "init "的部件部署完毕，你的控制器将自动从内存中移除。你不必担心这个问题，Get会自动做到这一点，只是要确保你不要两次启动同一个控制器。
+```
+
+✨✨✨注意：你可能想要一个更大的规模，而不是上面方式使用init属性。为此，你可以创建一个类并扩展Bindings类，并在其中添加将在该路由中创建的控制器。控制器不会在那个时候被创建，相反，这只是一个声明，这样你第一次使用Controller时，Get就会知道去哪里找。Get会保持懒加载，当不再需要Controller时，会自动移除它们。请看pub.dev的例子来了解它是如何工作的。
+
+如果你导航了很多路由，并且需要之前使用的Controller中的数据，你只需要再用一次GetBuilder（没有init）。
+
+```dart
+class OtherClass extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: GetBuilder<Controller>(
+          builder: (s) => Text('${s.counter}'),
+        ),
+      ),
+    );
+  }
+```
+
+如果你需要在许多其他地方使用你的控制器，并且在GetBuilder之外，只需在你的控制器中创建一个get，就可以轻松地拥有它。(或者使用`Get.find<Controller>()`)
+
+```dart
+class Controller extends GetxController {
+  /// 你不需要这个，我推荐使用它只是为了方便语法。
+  /// 用静态方法：Controller.to.increment()。
+  /// 没有静态方法的情况下：Get.find<Controller>().increment();
+  /// 使用这两种语法在性能上没有区别，也没有任何副作用。一个不需要类型，另一个IDE会自动完成。
+  static Controller get to => Get.find(); // 添加这一行 / 这一行很关键🚀🚀🚀
+  int counter = 0;
+  void increment() {
+    counter++;
+    update();
+  }
+}
+```
+
+然后你可以直接访问你的控制器，这样：
+
+```dart
+FloatingActionButton(
+  onPressed: () {
+    Controller.to.increment(),// 使用方式🚀🚀🚀
+  }
+  child: Text("${Controller.to.counter}"),// 使用方式🚀🚀🚀
+),
+```
+
+当你按下FloatingActionButton时，所有监听'counter'变量的widget都会自动更新。
+
+<font color=red size=5>GetBuilder - 唯一的ID:</font>
+
+如果你想用GetBuilder完善一个widget的更新控件，你可以给它们分配唯一的ID。
+
+```dart
+GetBuilder<Controller>(
+  id: 'text', //这里，设置一个唯一的ID
+  init: Controller(), // 每个控制器只用一次
+  builder: (_) => Text(
+    '${Get.find<Controller>().counter}', //here
+  ),
+),
+```
+
+并更新它：
+
+```dart
+update(['text']);
+```
+
+您还可以为更新设置条件。例如counter大于10时候触发更新。
+
+```dart
+update(['text'], counter < 10);
+```
+
+GetX会自动进行重建，并且只重建使用被更改的变量的小组件，如果您将一个变量更改为与之前相同的变量，并且不意味着状态的更改，GetX不会重建小组件以节省内存和CPU周期（界面上正在显示3，而您再次将变量更改为3。在大多数状态管理器中，这将导致一个新的重建，但在GetX中，如果事实上他的状态已经改变，那么widget将只被再次重建）
+
+
+
+#### 3.其他 - 控制器的生命周期
+
+GetxController中有自己的一套生命周期【workers】，如下：
 
 ```dart
 	class CountController extends GetxController {
@@ -436,55 +547,297 @@ GetxController中有自己的一套生命周期【workers】，如下
     super.onReady();
   }
 
+	/// 关闭流用onClose方法，而不是dispose
   @override
   void onClose() {
     super.onClose();
+    // controller销毁的地方
   }
     
-   @override
-  void dispose() {
-    super.dispose();
-     // controller销毁的地方
-  }
 }
 ```
 
+控制器的生命周期。
+
+- onInit()是创建控制器的地方。
+- onClose()，关闭控制器，为删除方法做准备。
+- deleted: 你不能访问这个API，因为它实际上是将控制器从内存中删除。它真的被删除了，不留任何痕迹。
 
 
-#### 2.简单状态管理器 - 局部手动控制【手动挡 - GetBuilder】
 
-Get有一个极其轻巧简单的状态管理器，它不使用ChangeNotifier，可以满足特别是对Flutter新手的需求，而且不会给大型应用带来问题。
+## 【四】依赖管理🚀✨
 
-GetBuilder正是针对多状态控制的。想象一下，你在购物车中添加了30个产品，你点击删除一个，同时List更新了，价格更新了，购物车中的徽章也更新为更小的数字。这种类型的方法使GetBuilder成为杀手锏，因为它将状态分组并一次性改变，而无需为此进行任何 "计算逻辑"。GetBuilder就是考虑到这种情况而创建的，因为对于短暂的状态变化，你可以使用setState，而不需要状态管理器。
-
-这样一来，如果你想要一个单独的控制器，你可以为其分配ID，或者使用GetX。这取决于你，记住你有越多的 "单独 "部件，GetX的性能就越突出，而当有多个状态变化时，GetBuilder的性能应该更优越。
-
-用法：
+- 注意：如果你使用的是Get的状态管理器，请多注意绑定api，这将使你的界面更容易连接到你的控制器。
 
 ```dart
-// 创建控制器类并扩展GetxController。
-class Controller extends GetxController {
-  int counter = 0;
-  void increment() {
-    counter++;
-    update(); // 当调用增量时，使用update()来更新用户界面上的计数器变量。
-  }
-}
-// 在你的Stateless/Stateful类中，当调用increment时，使用GetBuilder来更新Text。
-GetBuilder<Controller>(
-  init: Controller(), // 首次启动
-  builder: (_) => Text(
-    '${_.counter}',
-  ),
+Controller controller = Get.put(Controller()); // 而不是 Controller controller = Controller();
+```
+
+你是在Get实例中实例化它，而不是在你使用的类中实例化你的类，这将使它在整个App中可用。 所以你可以正常使用你的控制器（或类Bloc）。
+
+**提示：** Get依赖管理与包的其他部分是解耦的，所以如果你的应用已经使用了一个状态管理器（任何一个，都没关系），你不需要全部重写，你可以使用这个依赖注入。
+
+```dart
+controller.fetchApi();
+```
+
+想象一下，你已经浏览了无数条路由，现在你需要拿到一个被遗留在控制器中的数据，Get会自动为你的控制器找到你想要的数据，而你甚至不需要任何额外的依赖关系。
+
+```dart
+Controller controller = Get.find();
+//	是的，它看起来像魔术，Get会找到你的控制器，并将其提供给你。你可以实例化100万个控制器，Get总会给你正确的控制器。
+//  static Controller get to => Get.find(); // 同样的，在 “简单状态管理器” 章节中也介绍了此方法，可以在类里写明这句话，整个App中你就可沟通类来调用方法变量了。
+//  eg. Controller.to.xx属性/xx方法()
+```
+
+然后你就可以恢复你在后面获得的控制器数据。
+
+```dart
+Text(controller.textFromApi);
+```
+
+### <font color=red><u>1.实例方法：</u></font> 
+
+这些方法和它的可配置参数是：
+
+#### （1）Get.put
+
+最常见的插入依赖关系的方式。例如，对于你的视图的控制器来说：
+
+```dart
+Get.put<SomeClass>(SomeClass());
+Get.put<LoginController>(LoginController(), permanent: true);
+Get.put<ListItemController>(ListItemController, tag: "some unique string");
+```
+
+这是你使用put时可以设置的所有选项。
+
+```dart
+Get.put<S>(
+  // 必备：你想得到保存的类，比如控制器或其他东西。
+  // 注："S "意味着它可以是任何类型的类。
+  S dependency
+
+  // 可选：当你想要多个相同类型的类时，可以用这个方法。
+  // 因为你通常使用Get.find<Controller>()来获取一个类。
+  // 你需要使用标签来告诉你需要哪个实例。
+  // 必须是唯一的字符串
+  String tag,
+
+  // 可选：默认情况下，get会在实例不再使用后进行销毁
+  // （例如：一个已经销毁的视图的Controller)
+  // 但你可能需要这个实例在整个应用生命周期中保留在那里，就像一个sharedPreferences的实例或其他东西。
+  //所以你设置这个选项
+  // 默认值为false
+  bool permanent = false,
+
+  // 可选：允许你在测试中使用一个抽象类后，用另一个抽象类代替它，然后再进行测试。
+  // 默认为false
+  bool overrideAbstract = false,
+
+  // 可选：允许你使用函数而不是依赖（dependency）本身来创建依赖。
+  // 这个不常用
+  InstanceBuilderCallback<S> builder,
 )
-//只在第一次时初始化你的控制器。第二次使用ReBuilder时，不要再使用同一控制器。一旦将控制器标记为 "init "的部件部署完毕，你的控制器将自动从内存中移除。你不必担心这个问题，Get会自动做到这一点，只是要确保你不要两次启动同一个控制器。
 ```
 
 
 
+#### （2）Get.lazyPut
+
+可以懒加载一个依赖，这样它只有在使用时才会被实例化。这对于计算代价高的类来说非常有用，或者如果你想在一个地方实例化几个类（比如在Bindings类中），而且你知道你不会在那个时候使用这个类。
+
+```dart
+/// 1.只有当第一次使用Get.find<ApiMock>时，ApiMock才会被调用。
+Get.lazyPut<ApiMock>(() => ApiMock());
+/// 2.
+Get.lazyPut<FirebaseAuth>(
+  () {
+    // ... some logic if needed
+    return FirebaseAuth();
+  },
+  tag: Math.random().toString(),
+  fenix: true
+)
+/// 3.
+Get.lazyPut<Controller>( () => Controller() )
+```
+
+这是你在使用lazyPut时可以设置的所有选项。
+
+```dart
+Get.lazyPut<S>(
+  // 强制性：当你的类第一次被调用时，将被执行的方法。
+  InstanceBuilderCallback builder,
+  
+  // 可选：和Get.put()一样，当你想让同一个类有多个不同的实例时，就会用到它。
+  // 必须是唯一的
+  String tag,
+
+  // 可选：类似于 "永久"，
+  // 不同的是，当不使用时，实例会被丢弃，但当再次需要使用时，Get会重新创建实例，
+  // 就像 bindings api 中的 "SmartManagement.keepFactory "一样。
+  // 默认值为false
+  bool fenix = false
+)
+```
 
 
 
+#### （3）Get.putAsync
+
+如果你想注册一个异步实例，你可以使用`Get.putAsync`。
+
+```dart
+Get.putAsync<SharedPreferences>(() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setInt('counter', 12345);
+  return prefs;
+});
+Get.putAsync<YourAsyncClass>( () async => await YourAsyncClass() )
+```
+
+这都是你在使用putAsync时可以设置的选项。
+
+```dart
+Get.putAsync<S>(
+  // 必备：一个将被执行的异步方法，用于实例化你的类。
+  AsyncInstanceBuilderCallback<S> builder,
+  // 可选：和Get.put()一样，当你想让同一个类有多个不同的实例时，就会用到它。
+  // 必须是唯一的
+  String tag,
+  // 可选：与Get.put()相同，当你需要在整个应用程序中保持该实例的生命时使用。
+  // 默认值为false
+  bool permanent = false
+)
+```
+
+### <font color=red><u>2.使用实例化方法/类：</u></font> 
+
+想象一下，你已经浏览了无数条路由，现在你需要拿到一个被遗留在控制器中的数据，你只需要让Get为你的控制器自动 "寻找"，你不需要任何额外的依赖关系。
+
+```dart
+// 1.在某个页面使用改控制器时
+final controller = Get.find<Controller>();
+// 或者
+Controller controller = Get.find();
+// 是的，它看起来像魔术，Get会找到你的控制器，并将其提供给你。
+// 你可以实例化100万个控制器，Get总会给你正确的控制器。
+
+// 2.到处需要这个控制器，比如 网络请求/ 本地存储。 你可以在你的控制器Controller.dart中如下定义，但是前提你得写好各自的set or   get方法
+static Controller get to => Get.find(); // 同样的，在 “简单状态管理器” 章节中也介绍了此方法，可以在类里写明这句话，整个App中你就可沟通类来调用方法变量了。
+//  eg. Controller.to.xx属性/xx方法()
+```
+
+然后你就可以在需要使用控制器的页面中恢复你在后面获得的控制器数据。
+
+```dart
+// 1.与上1对应
+Text(controller.textFromApi);
+
+// 2.与上2对应
+Text(Controller.to.textFromApi); 
+```
+
+由于返回的值是一个正常的类，你可以做任何你想做的事情。
+
+```dart
+// 1.与上1对应
+int count = Get.find<SharedPreferences>().getInt('counter');
+print(count); // out: 12345
+
+// 2.与上2对应
+int count = Controller.to.getInt('counter');
+print(count); // out: 12345
+```
+
+移除一个Get实例:
+
+```dart
+Get.delete<Controller>(); //通常你不需要这样做，因为GetX已经删除了未使用的控制器。
+```
+
+
+
+### <font color=red><u>3.Bindings：</u></font> 
+
+这个包最大的区别之一，也许就是可以将路由、状态管理器和依赖管理器完全集成。 当一个路由从Stack中移除时，所有与它相关的控制器、变量和对象的实例都会从内存中移除。如果你使用的是流或定时器，它们会自动关闭，你不必担心这些。 在2.10版本中，Get完全实现了Bindings API。 现在你不再需要使用init方法了。如果你不想的话，你甚至不需要键入你的控制器。你可以在适当的地方启动你的控制器和服务来实现。 Binding类是一个将解耦依赖注入的类，同时 "Bindings "路由到状态管理器和依赖管理器。 这使得Get可以知道当使用某个控制器时，哪个页面正在显示，并知道在哪里以及如何销毁它。 此外，Binding类将允许你拥有SmartManager配置控制。你可以配置依赖关系，当从堆栈中删除一个路由时，或者当使用它的widget被布置时，或者两者都不布置。你将有智能依赖管理为你工作，但即使如此，你也可以按照你的意愿进行配置。
+
+#### （1）Bindings类
+
+```dart
+class HomeBinding implements Bindings {}
+```
+
+你的IDE会自动要求你重写 "dependencies"方法，然后插入你要在该路由上使用的所有类。
+
+```dart
+class HomeBinding implements Bindings {
+  @override
+  void dependencies() {
+    Get.lazyPut<HomeController>(() => HomeController());
+    Get.put<Service>(()=> Api());
+  }
+}
+
+class DetailsBinding implements Bindings {
+  @override
+  void dependencies() {
+    Get.lazyPut<DetailsController>(() => DetailsController());
+  }
+}
+```
+
+现在你只需要通知你的路由，你将使用该 Binding 来建立路由管理器、依赖关系和状态之间的连接。
+
+- 使用别名路由：
+
+```dart
+getPages: [
+  GetPage(
+    name: '/',
+    page: () => HomeView(),
+    binding: HomeBinding(),
+  ),
+  GetPage(
+    name: '/details',
+    page: () => DetailsView(),
+    binding: DetailsBinding(),
+  ),
+];
+```
+
+
+
+#### （2）BindingsBuilder
+
+创建Bindings的默认方式是创建一个实现Bindings的类，但是，你也可以使用`BindingsBuilder`回调，这样你就可以简单地使用一个函数来实例化任何你想要的东西。
+
+例子:
+
+```dart
+getPages: [
+  GetPage(
+    name: '/',
+    page: () => HomeView(),
+    binding: BindingsBuilder(() {
+      Get.lazyPut<ControllerX>(() => ControllerX());
+      Get.put<Service>(()=> Api());
+    }),
+  ),
+  GetPage(
+    name: '/details',
+    page: () => DetailsView(),
+    binding: BindingsBuilder(() {
+      Get.lazyPut<DetailsController>(() => DetailsController());
+    }),
+  ),
+];
+```
+
+这样一来，你就可以避免为每条路径创建一个 Binding 类，使之更加简单。
+
+两种方式都可以完美地工作，我们希望您使用最适合您的风格。
 
 
 
@@ -502,7 +855,7 @@ https://github.com/jonataslaw/getx/blob/master/documentation/zh_CN/route_managem
 
 https://github.com/jonataslaw/getx/blob/master/documentation/zh_CN/state_management.md
 
-#### 【4】依赖注入以及管理 
+#### 【4】getX依赖管理 
 
 https://github.com/jonataslaw/getx/blob/master/documentation/zh_CN/dependency_management.md
 
