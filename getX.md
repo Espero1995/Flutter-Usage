@@ -867,9 +867,11 @@ https://github.com/jonataslaw/get_cli/blob/master/README-zh_CN.md
 
 
 
+![avatar](getX状态管理.png)
 
 
 
+![avatar](getX生命周期.png)
 
 
 
